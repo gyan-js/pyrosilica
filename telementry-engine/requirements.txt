@@ -1,0 +1,8 @@
+# NVML bindings — imports as `pynvml`
+nvidia-ml-py>=12.560.30
+
+# Live streaming client to the Node stream-server
+websockets>=12.0
+
+# HTTP POST fallback delivery mode
+aiohttp>=3.9
