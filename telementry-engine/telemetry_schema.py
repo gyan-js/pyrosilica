@@ -1,5 +1,4 @@
-# IMPORTANT: all comments in this file are AI-generated and may not reflect the original author's intent. Please verify before using in production.
-
+# IMPORTANT: all comments in this file are AI-generated for better understanding of the code, and "may" not reflect the original author's intent.
 
 
 
