@@ -9,8 +9,7 @@ latest output into fixed-rate TelemetryFrames, and either streams them
 live (via ws_publisher) or records them to a local file.
 
 CLI:
-    python main.py --gpu-index 0 --tick-rate 30 --output-mode live \\
-        --ws-uri ws://localhost:8765/telemetry --kernel-mode auto
+    python main.py --gpu-index 0 --tick-rate 30 --output-mode live  --ws-uri ws://localhost:8765/telemetry --kernel-mode auto
 
     python main.py --list-gpus
 """
@@ -177,6 +176,23 @@ async def run(args: argparse.Namespace) -> None:
     ]
     if publisher is not None:
         tasks.append(asyncio.create_task(publisher.run(), name="ws_publisher"))
+
+    def _on_task_done(task: asyncio.Task) -> None:
+        # Without this, a task that dies from an uncaught exception just
+        # vanishes - asyncio logs a quiet "exception was never retrieved"
+        # warning at best, and every other task (including the assembler)
+        # keeps running forever on whatever stale data that task last
+        # produced. That's how a dead poller silently produces a
+        # recording that *looks* fine but is frozen after frame N.
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc is not None:
+            logger.error("Task '%s' died unexpectedly: %r", task.get_name(), exc, exc_info=exc)
+            stop_event.set()  # bring the whole pipeline down together, not limp on partially
+
+    for t in tasks:
+        t.add_done_callback(_on_task_done)
 
     logger.info(
         "telemetry-engine running: gpu=%d tick_rate=%.1fHz kernel_mode=%s output=%s",
