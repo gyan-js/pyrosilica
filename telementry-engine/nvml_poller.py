@@ -46,6 +46,12 @@ class NVMLUnavailableError(RuntimeError):
     """Raised when NVML can't be initialized (no driver, no GPU, no bindings)."""
 
 
+class _TransientSampleError(RuntimeError):
+    """Internal: one poll failed (e.g. GPU mid P-state transition). The
+    run() loop catches this, logs it, and tries again next tick - it must
+    never be allowed to kill the polling task outright."""
+
+
 SampleCallback = Callable[[SMState], Union[None, Awaitable[None]]]
 
 
@@ -162,8 +168,16 @@ class NVMLPoller:
         whole sample."""
         h = self._handle
 
-        util = pynvml.nvmlDeviceGetUtilizationRates(h)
-        mem = pynvml.nvmlDeviceGetMemoryInfo(h)
+        util_pct = self._safe_call(lambda: pynvml.nvmlDeviceGetUtilizationRates(h).gpu)
+        mem_info = self._safe_call(lambda: pynvml.nvmlDeviceGetMemoryInfo(h))
+
+        if util_pct is None:
+            # A transient NVML hiccup (common on laptop GPUs cycling P-states)
+            # must not kill the polling loop - surface a zeroed/stale-flagged
+            # sample instead of raising, and let run() log it and move on.
+            raise _TransientSampleError("nvmlDeviceGetUtilizationRates failed")
+        if mem_info is None:
+            raise _TransientSampleError("nvmlDeviceGetMemoryInfo failed")
 
         power_draw = self._safe_call(
             lambda: pynvml.nvmlDeviceGetPowerUsage(h) / 1000.0  # mW -> W
@@ -184,9 +198,9 @@ class NVMLPoller:
         return SMState(
             timestamp_ms=now_ms(),
             gpu_index=self.gpu_index,
-            sm_utilization_pct=float(util.gpu),
-            memory_used_mb=mem.used / (1024 * 1024),
-            memory_total_mb=mem.total / (1024 * 1024),
+            sm_utilization_pct=float(util_pct),
+            memory_used_mb=mem_info.used / (1024 * 1024),
+            memory_total_mb=mem_info.total / (1024 * 1024),
             power_draw_w=power_draw,
             power_limit_w=power_limit,
             temperature_c=temperature,
@@ -215,9 +229,34 @@ class NVMLPoller:
         period = 1.0 / self.poll_hz
         loop = asyncio.get_event_loop()
         next_tick = loop.time()
+        consecutive_failures = 0
 
         while self._running:
-            sample = self._sample_once()
+            try:
+                sample = self._sample_once()
+            except _TransientSampleError as e:
+                consecutive_failures += 1
+                logger.warning(
+                    "NVML sample failed (%s); skipping this tick (%d consecutive failure(s)).",
+                    e, consecutive_failures,
+                )
+                if consecutive_failures >= 20:
+                    # ~1s+ of continuous failures at typical tick rates means
+                    # something is genuinely wrong (GPU reset, driver crash,
+                    # cable-pulled eGPU, etc.) rather than a one-off blip -
+                    # surface it instead of polling forever into the void.
+                    raise NVMLUnavailableError(
+                        f"{consecutive_failures} consecutive NVML sample failures; giving up."
+                    ) from e
+                next_tick += period
+                delay = next_tick - loop.time()
+                if delay > 0:
+                    await asyncio.sleep(delay)
+                else:
+                    next_tick = loop.time()
+                continue
+
+            consecutive_failures = 0
 
             if self.on_sample is not None:
                 result = self.on_sample(sample)
