@@ -5,7 +5,9 @@ export class RunRecorder {
     this.recordedChunks = [];
   }
 
-  startRecording(fps = 60) {
+  startRecording(fps = 120
+    
+  ) {
     this.recordedChunks = [];
    
     const stream = this.canvas.captureStream(fps);
