@@ -1,23 +1,5 @@
 # IMPORTANT: all comments in this file are AI-generated for better understanding of the code, and "may" not reflect the original author's intent.
 
-"""
-ws_publisher.py
-
-Pushes assembled TelemetryFrames to the Node stream-server. Two delivery
-modes:
-
-  - "websocket": persistent client connection to the Node WS server.
-    Handles reconnection with exponential backoff if the frontend/server
-    side briefly drops, buffering frames (bounded, drop-oldest) while
-    disconnected so a brief blip doesn't stall the polling loop upstream.
-
-  - "http": stateless fallback - POSTs each batch to an HTTP endpoint.
-    Useful for deployment modes where a long-lived socket isn't available
-    (e.g. behind certain proxies) or for simple record/replay setups.
-
-This module intentionally knows nothing about NVML/CUPTI - it only
-consumes already-built TelemetryFrame objects via `publish()`.
-"""
 
 from __future__ import annotations
 
@@ -46,16 +28,7 @@ except ImportError:  # pragma: no cover
 
 
 class WSPublisher:
-    """
-    Usage (websocket mode):
-        pub = WSPublisher(mode="websocket", ws_uri="ws://localhost:8765/telemetry")
-        await pub.publish(frame)   # non-blocking, safe to call from the hot poll loop
-        ...
-        asyncio.create_task(pub.run())   # background connect/send loop
 
-    Usage (http mode):
-        pub = WSPublisher(mode="http", http_endpoint="http://localhost:8080/ingest")
-    """
 
     def __init__(
         self,
@@ -91,8 +64,7 @@ class WSPublisher:
         return self._connected
 
     async def publish(self, frame: TelemetryFrame) -> None:
-        """Non-blocking enqueue. Called from the hot poll/assembly loop -
-        must never await on network I/O here."""
+
         async with self._lock:
             if len(self._buffer) == self._buffer.maxlen:
                 logger.warning(
@@ -112,7 +84,8 @@ class WSPublisher:
         else:
             await self._run_http()
 
-    # -- websocket mode ---------------------------------------------------
+  
+
 
     async def _run_websocket(self) -> None:
         if not WEBSOCKETS_AVAILABLE:
@@ -130,9 +103,8 @@ class WSPublisher:
 
                     while self._running:
                         batch = await self._drain_batch()
-                        if batch:
-                            payload = "[" + ",".join(f.to_json() for f in batch) + "]"
-                            await ws.send(payload)
+                        for f in batch:
+                            await ws.send(f.to_json())
                         await asyncio.sleep(period)
 
             except (
@@ -157,7 +129,7 @@ class WSPublisher:
             self._buffer.clear()
         return batch
 
-    # -- http mode ----------------------------------------------------------
+  
 
     async def _run_http(self) -> None:
         if not AIOHTTP_AVAILABLE:
@@ -183,9 +155,7 @@ class WSPublisher:
                         logger.warning(
                             "ws_publisher HTTP POST failed (%s); retrying in %.1fs.", e, backoff
                         )
-                        # Frames already drained from the buffer are lost in http mode
-                        # on failure (no persistent connection to redeliver over) -
-                        # acceptable per roadmap (fire-and-forget POST mode).
+                     
                         await asyncio.sleep(backoff)
                         backoff = min(backoff * 2, self.reconnect_backoff_max_s)
                         continue
