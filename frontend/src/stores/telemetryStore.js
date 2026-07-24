@@ -12,6 +12,12 @@ export const useTelemetryStore = create((set, get) => ({
   
   isCustomProfile: false,
 
+  isExplainMode: false,
+  toggleExplainMode: () => set((state) => ({ isExplainMode: !state.isExplainMode })),
+
+  isExplodedView: false,
+  toggleExplodedView: () => set((state) => ({ isExplodedView: !state.isExplodedView })),
+
   ingestFrame: (frame) => set({ currentFrame: frame }),
   
   updateMetadata: (metadata) => set((state) => ({ 
