@@ -102,24 +102,6 @@ export const telemetryFrameSchema = {
   },
 };
 
-// ---------------------------------------------------------------------------
-// ajv validator (matches the ajv error shape you're already seeing in
-// stream-server logs: instancePath / schemaPath / keyword / params / message)
-// ---------------------------------------------------------------------------
-//
-// Usage in the ingest route:
-//
-//   import { validateTelemetryFrame } from '../shared-schemas/telemetry-types.js';
-//   const { valid, errors } = validateTelemetryFrame(parsedMessage);
-//   if (!valid) {
-//     console.warn('[ingest] dropped invalid frame:', errors);
-//     return;
-//   }
-//
-// If your stream-server keeps a single shared Ajv instance elsewhere
-// instead of creating one per import, swap this for exporting the raw
-// `telemetryFrameSchema` and compiling it there — the schema object above
-// is the actual source of truth either way.
 
 import Ajv from 'ajv';
 
