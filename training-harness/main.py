@@ -1,3 +1,4 @@
+
 from __future__ import annotations
 
 import argparse
@@ -5,6 +6,7 @@ import asyncio
 import json
 import sys
 from pathlib import Path
+from typing import Callable
 
 import torch
 import torch.nn as nn
@@ -13,7 +15,7 @@ from torch.utils.data import DataLoader, TensorDataset
 
 from event_schema import TrainingEvent
 from graph_extractor import GraphExtractor, build_module_id_map
-from model_loader import list_presets, load_model
+from model_loader import ModelLoadError, get_input_shape, list_presets, load_model
 from run_recorder import RunRecorder
 from training_loop import run_training
 
@@ -24,11 +26,10 @@ except ImportError:
     _WEBSOCKETS_AVAILABLE = False
 
 
-def _dummy_mnist_loader(batch_size: int = 32, num_batches: int = 50) -> DataLoader:
-    """Synthetic MNIST-shaped data — enough to demo the pipeline without
-    downloading a real dataset. Swap for a real DataLoader when this is
-    wired into an actual run."""
-    x = torch.randn(batch_size * num_batches, 1, 28, 28)
+def _dummy_loader(input_shape: tuple[int, int, int], batch_size: int = 32, num_batches: int = 50) -> DataLoader:
+  
+    channels, height, width = input_shape
+    x = torch.randn(batch_size * num_batches, channels, height, width)
     y = torch.randint(0, 10, (batch_size * num_batches,))
     return DataLoader(TensorDataset(x, y), batch_size=batch_size)
 
@@ -48,10 +49,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     return p
 
 
-def _make_ws_emitter(url: str):
-    """Returns an emit() callable that fans training events out over a raw
-    websocket to stream-server's /ingest — same idea as ws_publisher.py's
-    live push for telemetry frames, just a different payload shape."""
+def _make_ws_emitter(url: str) -> tuple[Callable[[TrainingEvent], None], Callable[[], None]]:
+   
     if not _WEBSOCKETS_AVAILABLE:
         raise RuntimeError("websockets package not installed — pip install websockets")
 
@@ -62,7 +61,13 @@ def _make_ws_emitter(url: str):
     def _emit(event: TrainingEvent) -> None:
         loop.run_until_complete(ws_holder["ws"].send(json.dumps(event.to_dict())))
 
-    return _emit
+    def _close() -> None:
+        try:
+            loop.run_until_complete(ws_holder["ws"].close())
+        finally:
+            loop.close()
+
+    return _emit, _close
 
 
 async def _connect_ws(url: str, holder: dict) -> None:
@@ -72,7 +77,11 @@ async def _connect_ws(url: str, holder: dict) -> None:
 def main() -> None:
     args = build_arg_parser().parse_args()
 
-    model = load_model(args.model, device=args.device)
+    try:
+        model = load_model(args.model, device=args.device)
+    except ModelLoadError as exc:
+        print(f"[main] failed to load model: {exc}", file=sys.stderr)
+        sys.exit(1)
 
     extractor = GraphExtractor(model)
     graph_nodes = extractor.extract()
@@ -86,14 +95,22 @@ def main() -> None:
         print(f"[main] graph written to {args.dump_graph}", file=sys.stderr)
 
     recorder: RunRecorder | None = None
-    emit_fns = []
+    ws_close: Callable[[], None] | None = None
+    emit_fns: list[Callable[[TrainingEvent], None]] = []
 
     if args.output_mode in ("record", "both"):
         recorder = RunRecorder(args.record_path)
         emit_fns.append(recorder.record_training_event)
 
     if args.output_mode in ("live", "both"):
-        emit_fns.append(_make_ws_emitter(args.stream_server))
+        try:
+            ws_emit, ws_close = _make_ws_emitter(args.stream_server)
+        except RuntimeError as exc:
+            print(f"[main] failed to set up live stream: {exc}", file=sys.stderr)
+            if recorder is not None:
+                asyncio.run(recorder.stop())
+            sys.exit(1)
+        emit_fns.append(ws_emit)
 
     def emit(event: TrainingEvent) -> None:
         for fn in emit_fns:
@@ -101,22 +118,26 @@ def main() -> None:
 
     optimizer = optim.Adam(model.parameters(), lr=1e-3)
     loss_fn = nn.CrossEntropyLoss()
-    dataloader = _dummy_mnist_loader(batch_size=args.batch_size)
+    dataloader = _dummy_loader(get_input_shape(args.model), batch_size=args.batch_size)
 
-    run_training(
-        model=model,
-        dataloader=dataloader,
-        optimizer=optimizer,
-        loss_fn=loss_fn,
-        node_ids=node_ids,
-        emit=emit,
-        device=args.device,
-        epochs=args.epochs,
-        max_steps=args.max_steps,
-    )
-
-    if recorder is not None:
-        asyncio.run(recorder.stop())
+    try:
+        run_training(
+            model=model,
+            dataloader=dataloader,
+            optimizer=optimizer,
+            loss_fn=loss_fn,
+            node_ids=node_ids,
+            emit=emit,
+            device=args.device,
+            epochs=args.epochs,
+            max_steps=args.max_steps,
+        )
+    finally:
+       
+        if recorder is not None:
+            asyncio.run(recorder.stop())
+        if ws_close is not None:
+            ws_close()
 
     print("[main] run complete", file=sys.stderr)
 
