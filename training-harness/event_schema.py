@@ -24,6 +24,7 @@ class EventType(str, Enum):
 
 @dataclass
 class TrainingEvent:
+   
     type: EventType
     node_id: Optional[str]
     step: int
@@ -31,7 +32,7 @@ class TrainingEvent:
     timestamp: float = field(default_factory=time.time)
     meta: dict[str, Any] = field(default_factory=dict)
     schema_version: str = SCHEMA_VERSION
-    stream: str = "training" 
+    stream: str = "training"  
 
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
