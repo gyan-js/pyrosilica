@@ -1,3 +1,4 @@
+
 from __future__ import annotations
 
 import asyncio
@@ -23,14 +24,17 @@ class RunRecorder:
         self._seq = 0
         self._telemetry_task: Optional[asyncio.Task] = None
 
+    
+
     def record_training_event(self, event: TrainingEvent) -> None:
         self._write({"stream": "training", **event.to_dict()})
 
-
+    
     def record_telemetry_frame(self, frame: dict[str, Any]) -> None:
         self._write({"stream": "telemetry", "received_at": time.time(), "frame": frame})
 
     async def attach_telemetry(self, stream_server_ws_url: str) -> None:
+      
         if not _WEBSOCKETS_AVAILABLE:
             raise RuntimeError("websockets package not installed — pip install websockets")
 
@@ -55,8 +59,9 @@ class RunRecorder:
                 pass
         self._fh.close()
 
+
     def _write(self, record: dict[str, Any]) -> None:
         record["seq"] = self._seq
         self._fh.write(json.dumps(record) + "\n")
         self._fh.flush()
-        self._seq += 1
+        self._seq += 1  
