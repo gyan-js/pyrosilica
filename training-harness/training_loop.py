@@ -44,6 +44,7 @@ def run_training(
 
                 optimizer.zero_grad(set_to_none=True)
 
+              
                 predictions = model(batch_inputs)
                 loss = loss_fn(predictions, batch_targets)
                 loss.backward()
