@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -18,9 +17,9 @@ GRAPH_SCHEMA_VERSION = "1.0.0"
 
 @dataclass
 class GraphNode:
-    id: str                      
-    name: str                  
-    op_type: str                
+    id: str                      # stable id, e.g. "features/0"
+    name: str                    # short display name, e.g. "0"
+    op_type: str                 # module class name, or fx op string
     parent_id: Optional[str]
     children: list[str] = field(default_factory=list)
     param_count: int = 0
@@ -36,10 +35,11 @@ def _count_params(module: nn.Module) -> int:
 
 
 def build_module_id_map(model: nn.Module) -> dict[str, str]:
+ 
     return {name: _stable_id(name) for name, _ in model.named_modules() if name != ""}
 
 
-def _extract_via_modules(model: nn.Module) -> dict[str, GraphNode]:
+def _build_module_tree(model: nn.Module) -> dict[str, GraphNode]:
     nodes: dict[str, GraphNode] = {
         "root": GraphNode(id="root", name=model.__class__.__name__, op_type="Module", parent_id=None)
     }
@@ -63,23 +63,41 @@ def _extract_via_modules(model: nn.Module) -> dict[str, GraphNode]:
     return nodes
 
 
+def _extract_via_modules(model: nn.Module) -> dict[str, GraphNode]:
+    return _build_module_tree(model)
+
+
 def _extract_via_fx(model: nn.Module) -> dict[str, GraphNode]:
     traced = fx.symbolic_trace(model)
-    nodes: dict[str, GraphNode] = {
-        "root": GraphNode(id="root", name=model.__class__.__name__, op_type="Module", parent_id=None)
-    }
+
+
+    nodes = _build_module_tree(model)
     module_map = dict(model.named_modules())
 
     for fx_node in traced.graph.nodes:
+        if fx_node.op == "call_module":
+            submodule = module_map.get(fx_node.target)
+            node_id = _stable_id(fx_node.target)
+
+           
+            node = nodes[node_id]
+            node.extra["fx_op"] = fx_node.op
+            node.extra.setdefault("fx_call_sites", []).append(fx_node.name)
+            if submodule is not None:
+                node.op_type = submodule.__class__.__name__
+            continue
+
+      
         node_id = _stable_id(fx_node.name)
-        submodule = module_map.get(fx_node.target) if fx_node.op == "call_module" else None
+        if node_id in nodes:
+           
+            node_id = f"{node_id}__{fx_node.op}"
 
         nodes[node_id] = GraphNode(
             id=node_id,
             name=fx_node.name,
-            op_type=submodule.__class__.__name__ if submodule else fx_node.op,
+            op_type=fx_node.op,
             parent_id="root",
-            param_count=_count_params(submodule) if submodule else 0,
             extra={"fx_op": fx_node.op, "fx_target": str(fx_node.target)},
         )
         nodes["root"].children.append(node_id)
@@ -118,11 +136,3 @@ class GraphExtractor:
 
 def export_graph(model: nn.Module) -> dict[str, Any]:
     return GraphExtractor(model).to_json()
-    
-
-
-
-
-
-
-
