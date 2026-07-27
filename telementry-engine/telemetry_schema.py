@@ -1,25 +1,3 @@
-# IMPORTANT: all comments in this file are AI-generated for better understanding of the code, and "may" not reflect the original author's intent.
-
-
-
-"""
-telemetry_schema.py
-
-Single source of truth for the JSON shape sent over the wire to the
-frontend (stream-server -> Three.js visualizer).
-
-Every other module in telemetry-engine/ constructs or consumes these
-dataclasses instead of raw dicts, so the wire format can't silently drift
-between nvml_poller, kernel_tracer, memory_tracker, and ws_publisher.
-
-IMPORTANT: if you change a field name or shape here, mirror the change in
-shared-schemas/telemetry-types.js on the frontend side, or the JS side will
-silently deserialize into undefined fields instead of failing loudly.
-
-SCHEMA_VERSION exists specifically so the frontend can detect a mismatch
-and warn instead of rendering garbage.
-"""
-
 from __future__ import annotations
 
 import time
@@ -31,21 +9,19 @@ SCHEMA_VERSION = "1.0.0"
 
 
 def now_ms() -> float:
-    """Monotonic-ish wall clock timestamp in milliseconds, used for all frames."""
+   
     return time.time() * 1000.0
 
 
-# ---------------------------------------------------------------------------
-# SM / device state — produced by nvml_poller.py
-# ---------------------------------------------------------------------------
+
 @dataclass
 class SMState:
     timestamp_ms: float
     gpu_index: int
-    sm_utilization_pct: float          # 0-100
+    sm_utilization_pct: float          
     memory_used_mb: float
     memory_total_mb: float
-    power_draw_w: Optional[float]      # None if unsupported on this card
+    power_draw_w: Optional[float]      
     power_limit_w: Optional[float]
     temperature_c: Optional[float]
     clock_sm_mhz: Optional[float]
@@ -55,9 +31,7 @@ class SMState:
         return asdict(self)
 
 
-# ---------------------------------------------------------------------------
-# Kernel launch events — produced by kernel_tracer.py (real CUPTI or fallback)
-# ---------------------------------------------------------------------------
+
 @dataclass
 class KernelEvent:
     name: str
@@ -75,9 +49,7 @@ class KernelEvent:
         return d
 
 
-# ---------------------------------------------------------------------------
-# Per-process memory — produced by memory_tracker.py
-# ---------------------------------------------------------------------------
+
 @dataclass
 class LayerMemoryDelta:
     layer_name: str
@@ -101,10 +73,7 @@ class MemorySnapshot:
         }
 
 
-# ---------------------------------------------------------------------------
-# Training-loop metrics — optional, forwarded from the training harness
-# (e.g. event_hooks.py) if/when that side of the system exists.
-# ---------------------------------------------------------------------------
+
 @dataclass
 class TrainingMetrics:
     step: Optional[int] = None
@@ -116,9 +85,7 @@ class TrainingMetrics:
         return asdict(self)
 
 
-# ---------------------------------------------------------------------------
-# The unit actually sent over the wire.
-# ---------------------------------------------------------------------------
+
 @dataclass
 class TelemetryFrame:
     frame_id: int
@@ -128,7 +95,8 @@ class TelemetryFrame:
     kernel_events: List[KernelEvent] = field(default_factory=list)
     memory_snapshot: Optional[MemorySnapshot] = None
     training_metrics: Optional[TrainingMetrics] = None
-
+    stream: str = "telemetry"  
+   
     def to_dict(self) -> Dict[str, Any]:
         return {
             "frame_id": self.frame_id,
@@ -138,6 +106,7 @@ class TelemetryFrame:
             "kernel_events": [k.to_dict() for k in self.kernel_events],
             "memory_snapshot": self.memory_snapshot.to_dict() if self.memory_snapshot else None,
             "training_metrics": self.training_metrics.to_dict() if self.training_metrics else None,
+            "stream": self.stream,
         }
 
     def to_json(self) -> str:
@@ -161,5 +130,3 @@ def new_frame(
         memory_snapshot=memory_snapshot,
         training_metrics=training_metrics,
     )
-
-    
