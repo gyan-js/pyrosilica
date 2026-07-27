@@ -1,3 +1,4 @@
+
 from __future__ import annotations
 
 import importlib.util
@@ -9,7 +10,7 @@ from typing import Callable
 import torch
 import torch.nn as nn
 
-# Small and boring on purpose: these exist so the CLI has a "just works, no script needed" path for demos.
+
 
 class MNIST_MLP(nn.Module):
     def __init__(self):
@@ -49,10 +50,61 @@ class TinyCNN(nn.Module):
         return self.classifier(self.features(x))
 
 
+class BigCNN(nn.Module):
+   
+
+    def __init__(self, num_classes: int = 10):
+        super().__init__()
+
+        def block(in_ch, out_ch, num_convs=2):
+            layers = []
+            for i in range(num_convs):
+                layers += [
+                    nn.Conv2d(in_ch if i == 0 else out_ch, out_ch, 3, padding=1),
+                    nn.BatchNorm2d(out_ch),
+                   
+                    nn.ReLU(inplace=False),
+                ]
+            layers.append(nn.MaxPool2d(2))
+            return nn.Sequential(*layers)
+
+        self.features = nn.Sequential(
+            block(3, 64),
+            block(64, 128),
+            block(128, 256),
+            block(256, 512),
+            block(512, 512),
+        )
+        # 128x128 input / 2^5 (five pools) = 4x4 spatial at the end.
+        self.classifier = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(512 * 4 * 4, 1024),
+            nn.ReLU(inplace=False),
+            nn.Dropout(0.5),
+            nn.Linear(1024, num_classes),
+        )
+
+    def forward(self, x):
+        return self.classifier(self.features(x))
+
+
 PRESETS: dict[str, Callable[[], nn.Module]] = {
     "mnist_mlp": MNIST_MLP,
     "tiny_cnn": TinyCNN,
+    "big_cnn": BigCNN,
 }
+
+INPUT_SHAPES: dict[str, tuple[int, int, int]] = {
+    "mnist_mlp": (1, 28, 28),
+    "tiny_cnn": (1, 28, 28),
+    "big_cnn": (3, 128, 128),
+}
+DEFAULT_INPUT_SHAPE: tuple[int, int, int] = (1, 28, 28)
+
+
+def get_input_shape(model_ref: str) -> tuple[int, int, int]:
+  
+    return INPUT_SHAPES.get(model_ref, DEFAULT_INPUT_SHAPE)
 
 
 class ModelLoadError(RuntimeError):
@@ -60,7 +112,7 @@ class ModelLoadError(RuntimeError):
 
 
 def _load_from_script(script_path: Path) -> nn.Module:
-
+   
     if not script_path.exists():
         raise ModelLoadError(f"model script not found: {script_path}")
 
@@ -94,7 +146,7 @@ def _load_from_script(script_path: Path) -> nn.Module:
 
 
 def load_model(model_ref: str, device: str = "cuda") -> nn.Module:
-   
+    """model_ref: a preset key (see PRESETS) or a filesystem path to a script."""
     if model_ref in PRESETS:
         model = PRESETS[model_ref]()
     else:
