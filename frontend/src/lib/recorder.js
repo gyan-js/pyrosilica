@@ -3,13 +3,13 @@ export class RunRecorder {
     this.canvas = canvasElement;
     this.mediaRecorder = null;
     this.recordedChunks = [];
+    this.totalSize = 0;
   }
 
-  startRecording(fps = 120
-    
-  ) {
+ 
+  startRecording(fps = 120, onSizeUpdate = null) {
     this.recordedChunks = [];
-   
+    this.totalSize = 0;
     const stream = this.canvas.captureStream(fps);
     
     const options = { mimeType: 'video/webm; codecs=vp9' };
@@ -24,11 +24,15 @@ export class RunRecorder {
     this.mediaRecorder.ondataavailable = (event) => {
       if (event.data.size > 0) {
         this.recordedChunks.push(event.data);
+        this.totalSize += event.data.size;
+       
+        if (onSizeUpdate) onSizeUpdate(this.totalSize);
       }
     };
 
-    this.mediaRecorder.start();
-    console.log('[Recorder] Started recording run...');
+   
+    this.mediaRecorder.start(1000);
+    console.log(`[Recorder] Started recording run at ${fps} FPS...`);
   }
 
   stopAndDownload(filename = 'gpu-training-run.webm') {
@@ -50,9 +54,10 @@ export class RunRecorder {
         URL.revokeObjectURL(url);
       }, 100);
       
-      console.log('[Recorder] Run saved to disk.');
+      console.log(`[Recorder] Run saved to disk. Total size: ${(this.totalSize / (1024 * 1024)).toFixed(2)} MB`);
     };
 
     this.mediaRecorder.stop();
   }
 }
+
