@@ -1,6 +1,4 @@
-
 export const SCHEMA_VERSION = '1.0.0';
-
 
 const smStateSchema = {
   type: 'object',
@@ -17,7 +15,7 @@ const smStateSchema = {
     sm_utilization_pct: { type: 'number', minimum: 0, maximum: 100 },
     memory_used_mb: { type: 'number', minimum: 0 },
     memory_total_mb: { type: 'number', minimum: 0 },
-    
+   
     power_draw_w: { type: ['number', 'null'] },
     power_limit_w: { type: ['number', 'null'] },
     temperature_c: { type: ['number', 'null'] },
@@ -42,7 +40,7 @@ const kernelEventSchema = {
       type: 'array', items: { type: 'integer', minimum: 1 }, minItems: 3, maxItems: 3,
     },
     source: { type: 'string', enum: ['cupti', 'sampled'] },
-    
+  
     stream_id: { type: ['integer', 'null'] },
   },
 };
@@ -78,6 +76,7 @@ const trainingMetricsSchema = {
   required: ['step', 'loss', 'throughput_samples_per_sec', 'extra'],
   additionalProperties: false,
   properties: {
+  
     step: { type: ['integer', 'null'] },
     loss: { type: ['number', 'null'] },
     throughput_samples_per_sec: { type: ['number', 'null'] },
@@ -86,10 +85,11 @@ const trainingMetricsSchema = {
 };
 
 
+
 export const telemetryFrameSchema = {
   $id: 'telemetry-frame.schema.json',
   type: 'object',
-  required: ['frame_id', 'schema_version', 'tick_rate_hz', 'sm_state', 'kernel_events', 'memory_snapshot', 'training_metrics'],
+  required: ['frame_id', 'schema_version', 'tick_rate_hz', 'sm_state', 'kernel_events', 'memory_snapshot', 'training_metrics', 'stream'],
   additionalProperties: false,
   properties: {
     frame_id: { type: 'integer', minimum: 0 },
@@ -99,8 +99,10 @@ export const telemetryFrameSchema = {
     kernel_events: { type: 'array', items: kernelEventSchema },
     memory_snapshot: { oneOf: [memorySnapshotSchema, { type: 'null' }] },
     training_metrics: { oneOf: [trainingMetricsSchema, { type: 'null' }] },
+    stream: { const: 'telemetry' },
   },
 };
+
 
 
 import Ajv from 'ajv';
@@ -112,5 +114,3 @@ export function validateTelemetryFrame(payload) {
   const valid = _validateFrame(payload);
   return { valid, errors: valid ? null : _validateFrame.errors };
 }
-
-
