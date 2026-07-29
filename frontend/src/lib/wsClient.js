@@ -1,4 +1,5 @@
 import { useTelemetryStore } from '../stores/telemetryStore';
+import { adaptTelemetryFrame } from './frameAdapter';
 
 class TelemetryWSClient {
   constructor(url) {
@@ -16,18 +17,30 @@ class TelemetryWSClient {
     this.socket.onopen = () => {
       console.log(`[WS] Connected to ${this.url}`);
       this.reconnectAttempts = 0;
-    
+
       this.sendCommand({ type: 'subscribe_live' });
     };
 
     this.socket.onmessage = (event) => {
+      let msg;
       try {
-        const frame = JSON.parse(event.data);
-       
-        useTelemetryStore.getState().ingestFrame(frame);
+        msg = JSON.parse(event.data);
       } catch (err) {
-        console.error('[WS] Failed to parse incoming telemetry frame:', err);
+        console.error('[WS] Failed to parse incoming message:', err);
+        return;
       }
+
+      if (msg.type === 'backfill') {
+        this._handleBackfill(msg.frames ?? []);
+        return;
+      }
+
+      if (msg.type === 'frame') {
+        this._handleFrame(msg.frame);
+        return;
+      }
+
+      console.warn('[WS] Ignoring message with unrecognized type:', msg.type);
     };
 
     this.socket.onclose = () => {
@@ -40,6 +53,27 @@ class TelemetryWSClient {
       console.error('[WS] Error:', error);
       this.socket.close();
     };
+  }
+
+  _handleBackfill(frames) {
+   
+    for (const frame of frames) {
+      this._handleFrame(frame);
+    }
+  }
+
+  _handleFrame(frame) {
+    if (!frame) return;
+
+ 
+    if (frame.stream === 'training') {
+      useTelemetryStore.getState().ingestTrainingEvent(frame);
+      return;
+    }
+
+    const { activeGpuProfile } = useTelemetryStore.getState();
+    const viewFrame = adaptTelemetryFrame(frame, activeGpuProfile);
+    useTelemetryStore.getState().ingestFrame(viewFrame);
   }
 
   attemptReconnect() {
@@ -64,6 +98,5 @@ class TelemetryWSClient {
     }
   }
 }
-
 
 export const wsClient = new TelemetryWSClient('ws://localhost:8080/telemetry');
