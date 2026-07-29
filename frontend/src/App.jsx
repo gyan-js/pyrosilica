@@ -6,7 +6,7 @@ import LossCurvePanel from './panels/LossCurvePanel';
 import ModelGraphPanel from './panels/ModelGraphPanel';
 import ExplainModeTooltip from './panels/ExplainModeTooltip';
 import { useTelemetryStore } from './stores/telemetryStore';
-import { useMockTelemetry } from './lib/useMockTelemetry';
+import { wsClient } from './lib/wsClient';
 import { RunRecorder } from './lib/recorder'; 
 
 export default function App() {
@@ -19,7 +19,10 @@ export default function App() {
   const [recSize, setRecSize] = useState(0);
   const recorderRef = useRef(null);
 
-  useMockTelemetry(true);
+  useEffect(() => {
+    wsClient.connect();
+    return () => wsClient.disconnect();
+  }, []);
 
   useEffect(() => {
     const timer = setTimeout(() => setIsReady(true), 150);
