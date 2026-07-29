@@ -4,7 +4,11 @@ import { gpuProfiles } from '../lib/gpuSpecProfiles';
 export const useTelemetryStore = create((set, get) => ({
 
   currentFrame: null,
+
   
+  currentTrainingEvent: null,
+  ingestTrainingEvent: (event) => set({ currentTrainingEvent: event }),
+
   runMetadata: {},
   
 
