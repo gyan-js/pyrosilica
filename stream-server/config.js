@@ -11,3 +11,5 @@ export const RING_BUFFER_SIZE = parseInt(process.env.RING_BUFFER_SIZE || '300', 
 
 export const REPLAYS_DIR = process.env.REPLAYS_DIR || path.join(__dirname, 'replays');
 export const GPU_PROFILES_DIR = process.env.GPU_PROFILES_DIR || path.join(__dirname, 'gpu-profiles');
+
+export const RECORD_TO = process.env.RECORD_TO || null; 
