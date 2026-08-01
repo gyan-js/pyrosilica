@@ -112,7 +112,6 @@ git clone https://github.com/<you>/pyrosilica.git
 cd pyrosilica
 
 cd telemetry-engine -> pip install -r requirements.txt
-cd training-harness -> pip install -r requirements.txt
 cd stream-server -> npm install 
 cd frontend -> npm install 
 
