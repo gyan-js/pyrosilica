@@ -91,7 +91,7 @@ export default function App() {
           <div className={`${glassPanel} p-4 flex flex-col gap-4 max-w-lg`}>
             <div className="flex items-center justify-between gap-8">
                <h1 className="font-display font-bold text-lg tracking-wider text-primary uppercase drop-shadow-md">Pyrosilica</h1>
-               <span className="text-muted text-xs font-mono">v1.2</span>
+               
             </div>
             
            <div className="flex items-center gap-2">
