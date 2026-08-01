@@ -4,17 +4,16 @@ import { WebSocketServer } from 'ws';
 
 import { PORT, RING_BUFFER_SIZE, REPLAYS_DIR } from './config.js';
 import { FrameBuffer } from './frameBuffer.js';
-import { validateFrame } from './schemas/frameSchema.js';
+import { validateTelemetryFrame } from '../shared-schemas/telemetry-types.js';
+import { validateTrainingEvent } from '../shared-schemas/trainingEventSchema.js';
 import { handleHttpRequest } from './routes.js';
 import { ReplayLoader } from './replayLoader.js';
 
 const frameBuffer = new FrameBuffer(RING_BUFFER_SIZE);
 const telemetryClients = new Set();
 
-// Exactly one active source at a time: a live Python publisher on
-// /ingest, or a replay being driven from an ndjson file. Never both —
-// that's how you get two streams interleaved into one scene.
-let ingestSocket = null;
+
+const ingestSockets = new Set();
 let activeReplay = null;
 
 const httpServer = http.createServer(handleHttpRequest);
@@ -24,7 +23,7 @@ httpServer.on('upgrade', (req, socket, head) => {
   const { pathname } = new URL(req.url, `http://${req.headers.host}`);
 
   if (pathname === '/ingest') {
-    if (ingestSocket || activeReplay) {
+    if (activeReplay) {
       socket.write('HTTP/1.1 409 Conflict\r\n\r\n');
       socket.destroy();
       return;
@@ -41,31 +40,40 @@ httpServer.on('upgrade', (req, socket, head) => {
   socket.destroy();
 });
 
+
+function validateIngestPayload(payload) {
+  if (payload && payload.stream === 'training') {
+    return validateTrainingEvent(payload);
+  }
+  
+  return validateTelemetryFrame(payload);
+}
+
 function handleIngestConnection(ws) {
-  ingestSocket = ws;
-  console.log('[ingest] publisher connected');
+  ingestSockets.add(ws);
+  console.log(`[ingest] publisher connected (${ingestSockets.size} active)`);
 
   ws.on('message', (raw) => {
-    let frame;
+    let payload;
     try {
-      frame = JSON.parse(raw.toString());
+      payload = JSON.parse(raw.toString());
     } catch {
       console.warn('[ingest] dropped non-JSON message');
       return;
     }
 
-    const { valid, errors } = validateFrame(frame);
+    const { valid, errors } = validateIngestPayload(payload);
     if (!valid) {
       console.warn('[ingest] dropped invalid frame:', errors);
       return;
     }
 
-    relayFrame(frame);
+    relayFrame(payload);
   });
 
   ws.on('close', () => {
-    console.log('[ingest] publisher disconnected');
-    if (ingestSocket === ws) ingestSocket = null;
+    ingestSockets.delete(ws);
+    console.log(`[ingest] publisher disconnected (${ingestSockets.size} active)`);
   });
 
   ws.on('error', (err) => console.error('[ingest] socket error:', err.message));
@@ -121,7 +129,7 @@ function handleTelemetryCommand(raw) {
 }
 
 async function startReplay(fileName) {
-  if (ingestSocket) {
+  if (ingestSockets.size > 0) {
     console.warn('[replay] refused: live ingest is active');
     return;
   }
@@ -167,3 +175,6 @@ httpServer.listen(PORT, () => {
   console.log(`  ingest:    ws://localhost:${PORT}/ingest`);
   console.log(`  telemetry: ws://localhost:${PORT}/telemetry`);
 });
+
+
+
