@@ -41,11 +41,11 @@ Most visualizers stop at "GPU util: 84%." That number doesn't tell you *where* t
         │  forward/backward hooks
         ▼
 [training-harness]  ──── layer execution events ────┐
-                                                      ▼
+                                                    ▼
 [telemetry-engine]  ◄── NVML/CUPTI ◄── [GPU]   [merged TelemetryFrame]
         │
         ▼  WebSocket
-[stream-server]  ── validates, relays, buffers ──▶  [viz-frontend]
+[stream-server]  ── validates, relays, buffers ──▶  [frontend]
                                                       React + Three.js
 ```
 
@@ -56,7 +56,7 @@ Five packages, one npm workspace:
 | `telemetry-engine/` | Python — polls NVML/CUPTI, assembles frames |
 | `training-harness/` | Python — wraps a user's PyTorch model, captures layer events via hooks |
 | `stream-server/` | Node.js — validates and relays frames over WebSocket, handles replay |
-| `viz-frontend/` | React + Three.js — the actual 3D scene, panels, kernel timeline |
+| `frontend/` | React + Three.js — the actual 3D scene, panels, kernel timeline |
 | `shared-schemas/` | JSDoc typedefs keeping the frame contract honest across languages |
 
 Full write-up: [`docs/architecture.md`](docs/architecture.md).
